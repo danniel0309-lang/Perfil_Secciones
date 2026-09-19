@@ -1,0 +1,72 @@
+==============================================================================
+INFORME DE PUNTOS BAJOS - PERFIL LONGITUDINAL
+==============================================================================
+
+Archivo                     : examples/secciones_ejemplo.csv
+Línea de referencia         : EJE
+Estaciones                  : 21  (K0+000 - K0+400)
+Longitud                    : 400.0 m
+Costados dibujados          : BV IZQ, BV DER
+
+Parámetros de detección
+  Profundidad mínima        : 0.000 m
+  Extremos incluidos        : no
+
+Escala del perfil
+  Exageración vertical      : x24.56
+  Paso de cuadrícula (cota) : 1 m
+  Cota de referencia / tope : 2535.000 / 2541.000 m
+  Rango de cotas            : 2535.779 - 2540.421 m
+
+Cota mínima del tramo: 2535.840 m  @ K0+300
+Cota máxima del tramo: 2540.421 m  @ K0+040
+
+PUNTOS BAJOS DETECTADOS: 2
+------------------------------------------------------------------------------
+ID   Abscisa  Cota (m)  Anterior         Siguiente        Prof.adyac  Prof.rebose  Pend.ent%  Pend.sal%
+PB1  K0+140   2537.588  K0+120 2537.748  K0+160 2537.852  0.160       0.969        -0.80      +1.32
+PB2  K0+300   2535.840  K0+280 2536.217  K0+320 2535.939  0.099       1.040        -1.88      +0.49
+
+Prof.adyac = menor diferencia de cota con las estaciones vecinas; Prof.rebose = diferencia hasta la menor de las dos crestas que encierran la depresión (nivel al que el agua desbordaría).
+
+Punto más profundo (hasta la cota de rebose): PB2 @ K0+300  z = 2535.840 m, 1.040 m
+
+EMPOZAMIENTO (AGUA ACUMULADA)
+------------------------------------------------------------------------------
+ID   Nivel agua (m)  Prof. (m)  Longitud (m)  Área (m²)  Llenado
+PB1  2538.557        0.969      104.4         57.43      rebose
+PB2  2536.880        1.040      117.6         64.78      rebose
+Superficie plana a la cota de rebose (o fondo + profundidad máxima indicada). El área es la del plano longitudinal (m²), no un volumen.
+
+LÍNEA IDEAL (RASANTE SIN PUNTOS BAJOS)
+------------------------------------------------------------------------------
+  Tendencia                               : sube hasta K0+040 y luego baja
+  Pendiente mínima aplicada               : 0.50 %
+  Pendiente media de la línea ideal       : 1.20 %
+  Relleno máximo (ideal sobre la real)    : 0.720 m
+  Corte máximo (ideal bajo la real)       : 0.720 m
+  Desviación cuadrática media             : 0.414 m
+Diferencia ideal - real por estación en perfil_ideal.csv (+ relleno, - corte).
+
+VALIDACIÓN DE DATOS
+------------------------------------------------------------------------------
+Secciones válidas leídas: 21
+Sin advertencias.
+Puntos más bajos por sección transversal: ver secciones_minimos.csv
+
+ARCHIVOS GENERADOS
+------------------------------------------------------------------------------
+  perfil_longitudinal_izquierdo.png
+  perfil_longitudinal_izquierdo.pdf
+  perfil_longitudinal_derecho.png
+  perfil_longitudinal_derecho.pdf
+  secciones_p01.png
+  secciones_p02.png
+  secciones_p03.png
+  secciones_p04.png
+  secciones.pdf
+  puntos_bajos.png
+  puntos_bajos.csv
+  secciones_minimos.csv
+  perfil_ideal.csv
+  informe_puntos_bajos.txt

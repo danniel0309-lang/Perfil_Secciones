@@ -1,0 +1,3 @@
+id,station,station_m,end_station,n_stations,elevation_m,prev_station,prev_elevation_m,next_station,next_elevation_m,depth_prev_m,depth_next_m,depth_adjacent_m,depth_mean_m,depth_to_spill_m,grade_in_pct,grade_out_pct,boundary,water_level_m,water_depth_m,pond_length_m,pond_area_m2
+PB1,K0+140,140.000,K0+140,1,2537.588,K0+120,2537.748,K0+160,2537.852,0.160,0.264,0.160,0.212,0.969,-0.80,+1.32,no,2538.557,0.969,104.4,57.43
+PB2,K0+300,300.000,K0+300,1,2535.840,K0+280,2536.217,K0+320,2535.939,0.377,0.099,0.099,0.238,1.040,-1.88,+0.49,no,2536.880,1.040,117.6,64.78

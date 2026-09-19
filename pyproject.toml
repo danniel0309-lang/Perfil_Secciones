@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "perfil-vial"
+version = "0.2.0"
+description = "Perfil longitudinal, secciones transversales y puntos bajos de una vía a partir de un CSV de secciones transversales"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.21",
+  "matplotlib>=3.5",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering",
+]
+keywords = ["perfil longitudinal", "secciones transversales", "topografía", "vías", "drenaje"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+perfil-vial = "perfil_vial.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["perfil_vial"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
