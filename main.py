@@ -9,6 +9,7 @@ Nuevas dependencias para exportar tablas: openpyxl y python-docx.
 import asyncio
 import csv
 import io
+import tempfile
 import re
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -19,6 +20,10 @@ matplotlib.use("Agg")
 
 import flet as ft
 from perfil_vial.cli import run as ejecutar_perfiles
+from app.db import (
+    inicializar_db, guardar_proyecto, listar_proyectos, listar_calculos,
+    obtener_calculo, eliminar_proyecto, extraer_calculo, resumen_comparacion,
+)
 
 
 RAIZ = Path(__file__).resolve().parent
@@ -193,12 +198,15 @@ def tarjeta(contenido: ft.Control):
 
 
 def main(page: ft.Page):
+    inicializar_db()  # CREATE TABLE IF NOT EXISTS en el primer inicio.
     page.title = "Perfil Vial | Ingeniería Civil"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = FONDO
     page.padding = 20
 
     csv_entrada = None
+    carpeta_resultados = SALIDA
+    temporales_historial = []  # Mantiene las carpetas de historial mientras la ventana siga abierta.
     graficas = []
     documentos = []
     marcas = {}
@@ -230,6 +238,15 @@ def main(page: ft.Page):
                  ft.DropdownOption(key="csv", text="CSV (.csv)")],
     )
     aviso_guardar = ft.Text("", color=VERDE)
+    nombre_proyecto = ft.TextField(label="Nombre del proyecto", width=340)
+    descripcion_proyecto = ft.TextField(label="Descripción (opcional)", width=440)
+    aviso_historial = ft.Text("", color=GRIS)
+    buscar_proyecto = ft.TextField(label="Buscar por nombre o descripción", width=390)
+    lista_historial = ft.Column(controls=[], spacing=9)
+    comparacion_resultado = ft.Text("", color=AZUL)
+    comparacion_a = ft.Dropdown(label="Proyecto A", width=300, options=[])
+    comparacion_b = ft.Dropdown(label="Proyecto B", width=300, options=[])
+    guardar_boton = ft.Button("GUARDAR PROYECTO EN HISTORIAL", disabled=True)
     panel = ft.Column(controls=[], expand=True, scroll=ft.ScrollMode.AUTO, spacing=14)
 
     def limpiar_resultados():
@@ -248,7 +265,7 @@ def main(page: ft.Page):
         aviso_guardar.value = ""
 
     async def elegir_entrada(e):
-        nonlocal csv_entrada
+        nonlocal csv_entrada, carpeta_resultados
         try:
             elegidos = await ft.FilePicker().pick_files(
                 dialog_title="Seleccionar archivo topográfico CSV",
@@ -263,6 +280,8 @@ def main(page: ft.Page):
                 page.update()
                 return
             csv_entrada = Path(elegidos[0].path)
+            carpeta_resultados = SALIDA
+            guardar_boton.disabled = True
             archivo_entrada.value = csv_entrada.name
             aviso.value = "Archivo cargado. Puedes iniciar el cálculo."
             generar.disabled = False
@@ -340,7 +359,7 @@ def main(page: ft.Page):
     def cargar_resultados():
         nonlocal graficas, documentos, marcas
         limpiar_resultados()
-        archivos = sorted(p for p in SALIDA.iterdir() if p.is_file())
+        archivos = sorted(p for p in carpeta_resultados.iterdir() if p.is_file())
         graficas = sorted((p for p in archivos if p.suffix.lower() == ".png"), key=orden_grafica)
         documentos = [p for p in archivos if p.suffix.lower() in {".csv", ".txt"}]
         if csv_entrada and csv_entrada.is_file():
@@ -364,11 +383,14 @@ def main(page: ft.Page):
         mostrar_grafica()
 
     async def procesar(e):
+        nonlocal carpeta_resultados
         if not csv_entrada or not csv_entrada.is_file():
             aviso.value = "Selecciona un CSV válido."
             page.update()
             return
         generar.disabled = True
+        guardar_boton.disabled = True
+        carpeta_resultados = SALIDA
         aviso.value = "Procesando información topográfica..."
         limpiar_resultados()
         page.update()
@@ -381,6 +403,7 @@ def main(page: ft.Page):
                 return
             aviso.value = "Cálculos terminados. Selecciona qué deseas consultar o exportar."
             cargar_resultados()
+            guardar_boton.disabled = False
             mostrar_graficas()
         except Exception as exc:
             aviso.value = f"Error durante el cálculo: {exc}"
@@ -456,6 +479,143 @@ def main(page: ft.Page):
             aviso_guardar.value = f"No se pudo exportar: {exc}"
         page.update()
 
+    def guardar_en_historial(e=None):
+        if not csv_entrada or not graficas:
+            aviso_historial.value = "Primero carga un CSV y ejecuta un cálculo."
+            page.update()
+            return
+        try:
+            proyecto_id, calculo_id = guardar_proyecto(
+                nombre_proyecto.value or "",
+                descripcion_proyecto.value or "",
+                csv_entrada,
+                carpeta_resultados,
+            )
+            aviso_historial.value = (
+                f"Guardado en SQLite: proyecto #{proyecto_id}, cálculo #{calculo_id}."
+            )
+        except Exception as exc:
+            aviso_historial.value = f"No se pudo guardar: {exc}"
+        page.update()
+
+    guardar_boton.on_click = guardar_en_historial
+
+    def abrir_calculo_guardado(calculo_id: int):
+        nonlocal csv_entrada, carpeta_resultados
+        try:
+            registro = obtener_calculo(calculo_id)
+            if registro is None:
+                raise ValueError("No existe el cálculo solicitado.")
+            temporal = tempfile.TemporaryDirectory(prefix="perfil_vial_hist_")
+            temporales_historial.append(temporal)
+            csv_entrada, carpeta_resultados = extraer_calculo(
+                registro, Path(temporal.name)
+            )
+            archivo_entrada.value = f"{csv_entrada.name} (historial)"
+            nombre_proyecto.value = registro["nombre_proyecto"]
+            descripcion_proyecto.value = registro["descripcion"]
+            generar.disabled = False
+            cargar_resultados()
+            guardar_boton.disabled = False
+            aviso.value = (
+                f"Recuperado: {registro['nombre_proyecto']} · "
+                f"cálculo #{registro['id']}. Resultados originales restaurados."
+            )
+            mostrar_vias()
+        except Exception as exc:
+            aviso_historial.value = f"No se pudo abrir el cálculo: {exc}"
+            page.update()
+
+    def borrar_proyecto(proyecto_id: int, confirmacion: ft.Checkbox):
+        if not confirmacion.value:
+            aviso_historial.value = "Marca 'Confirmar eliminación' antes de borrar."
+        else:
+            try:
+                eliminado = eliminar_proyecto(proyecto_id)
+                aviso_historial.value = (
+                    "Proyecto y cálculos asociados eliminados de SQLite."
+                    if eliminado else "El proyecto ya no existe."
+                )
+                refrescar_historial()
+            except Exception as exc:
+                aviso_historial.value = f"No se pudo eliminar: {exc}"
+        page.update()
+
+    def refrescar_historial(e=None):
+        lista_historial.controls.clear()
+        registros = listar_proyectos(buscar_proyecto.value or "")
+        todos = listar_proyectos()
+        if not registros:
+            lista_historial.controls.append(ft.Text("No hay proyectos que coincidan."))
+        for p in registros:
+            calculos = listar_calculos(p["id"])
+            confirmar = ft.Checkbox(label="Confirmar eliminación", value=False)
+            botones_calculo = [
+                ft.Button(
+                    f"ABRIR CÁLCULO #{c['id']} · {c['creado_en']}",
+                    on_click=lambda ev, cid=c["id"]: abrir_calculo_guardado(cid),
+                )
+                for c in calculos
+            ]
+            lista_historial.controls.append(
+                tarjeta(ft.Column(controls=[
+                    ft.Text(f"#{p['id']}  {p['nombre']}", weight=ft.FontWeight.BOLD, color=AZUL, size=17),
+                    ft.Text(p["descripcion"] or "Sin descripción", color=GRIS),
+                    ft.Text(f"Fecha: {p['creado_en']}  ·  Cálculos: {p['total_calculos']}", color=GRIS, size=12),
+                    ft.Row(controls=botones_calculo, wrap=True),
+                    ft.Row(controls=[confirmar, ft.Button(
+                        "ELIMINAR PROYECTO",
+                        on_click=lambda ev, pid=p["id"], conf=confirmar: borrar_proyecto(pid, conf),
+                    )], wrap=True),
+                ], spacing=7))
+            )
+        def crear_opciones():
+            return [ft.DropdownOption(key=str(p["ultimo_calculo_id"]),
+                    text=f"{p['nombre']} (#{p['ultimo_calculo_id']})")
+                    for p in todos if p["ultimo_calculo_id"] is not None]
+        comparacion_a.options = crear_opciones()
+        comparacion_b.options = crear_opciones()
+        page.update()
+
+    def comparar_calculos(e=None):
+        if not comparacion_a.value or not comparacion_b.value:
+            comparacion_resultado.value = "Selecciona dos proyectos para comparar."
+        else:
+            try:
+                r = resumen_comparacion(int(comparacion_a.value), int(comparacion_b.value))
+                pa = "No disponible" if r["puntos_bajos_a"] is None else str(r["puntos_bajos_a"])
+                pb = "No disponible" if r["puntos_bajos_b"] is None else str(r["puntos_bajos_b"])
+                comparacion_resultado.value = (
+                    f"{r['proyecto_a']}: {pa} puntos bajos, {r['graficas_a']} gráficas.\n"
+                    f"{r['proyecto_b']}: {pb} puntos bajos, {r['graficas_b']} gráficas.\n"
+                    "Comparación descriptiva; no sustituye la validación geométrica de ingeniería."
+                )
+            except Exception as exc:
+                comparacion_resultado.value = f"No se pudo comparar: {exc}"
+        page.update()
+
+    def mostrar_historial(e=None):
+        page.controls.clear()
+        page.add(ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, spacing=12, controls=[
+            cabecera(),
+            tarjeta(ft.Column(controls=[
+                ft.Text("HISTORIAL DE PROYECTOS | SQLITE", size=22, weight=ft.FontWeight.BOLD, color=AZUL),
+                ft.Row(controls=[buscar_proyecto, ft.Button("BUSCAR / ACTUALIZAR", on_click=refrescar_historial),
+                                 ft.Button("VOLVER A DISEÑO VIAL", on_click=mostrar_vias)], wrap=True),
+                aviso_historial,
+            ], spacing=10)),
+            lista_historial,
+            tarjeta(ft.Column(controls=[
+                ft.Text("COMPARAR DOS PROYECTOS", size=18, weight=ft.FontWeight.BOLD, color=AZUL),
+                ft.Text("Compara los últimos cálculos guardados de cada proyecto.", color=GRIS),
+                ft.Row(controls=[comparacion_a, comparacion_b,
+                                 ft.Button("COMPARAR", on_click=comparar_calculos)], wrap=True),
+                comparacion_resultado,
+            ], spacing=10)),
+        ]))
+        refrescar_historial()
+        page.update()
+
     def cabecera():
         return tarjeta(ft.Row(controls=[
             ft.Column(controls=[
@@ -517,8 +677,11 @@ def main(page: ft.Page):
                 ft.Row(controls=[ft.Button("SELECCIONAR CSV", on_click=elegir_entrada),
                                  archivo_entrada, generar], wrap=True),
                 aviso, resumen,
+                ft.Row(controls=[nombre_proyecto, descripcion_proyecto, guardar_boton], wrap=True),
+                aviso_historial,
                 ft.Row(controls=[ft.Button("GRÁFICAS", on_click=mostrar_graficas),
                                  ft.Button("DATOS E INFORMES", on_click=mostrar_datos),
+                                 ft.Button("HISTORIAL", on_click=mostrar_historial),
                                  ft.Button("INICIO", on_click=mostrar_inicio)], wrap=True),
             ], spacing=11)),
             panel,
@@ -545,6 +708,7 @@ def main(page: ft.Page):
             ft.Row(controls=[
                 ft.Button("DISEÑO VIAL", on_click=mostrar_vias),
                 ft.Button("REDES DE ALCANTARILLADO", on_click=mostrar_redes),
+                ft.Button("HISTORIAL", on_click=mostrar_historial),
             ], wrap=True),
         ], spacing=16)))
         page.update()
