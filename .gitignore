@@ -7,15 +7,19 @@ dist/
 .venv/
 venv/
 
-# carpetas de salida generadas al ejecutar el programa
+# Directorios de resultados generados (no subir a GitHub)
 salida_perfil/
 salida/
-# Bases de datos SQLite
+examples/salida_ejemplo/
+reportes_generados/
+
+# SQLite de trabajo (no versionar datos de usuarios)
 *.db
 *.sqlite
 *.sqlite3
 
-# Informes generados
-reportes_generados/
-# Resultados de ejemplo generados automáticamente
-examples/salida_ejemplo/
+# Respaldos, temporales de LibreOffice y archivos exportados en raíz
+*.bak
+.~lock*
+/perfil_ideal.xlsx
+/INSTRUCCIONES.txt

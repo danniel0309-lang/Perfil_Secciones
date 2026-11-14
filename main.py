@@ -20,6 +20,8 @@ matplotlib.use("Agg")
 
 import flet as ft
 from perfil_vial.cli import run as ejecutar_perfiles
+from app.modelo import muestrear_eje, guardar_muestreo_csv, guardar_muestreo_png
+from app.memoria import crear_memoria
 from app.db import (
     inicializar_db, guardar_proyecto, listar_proyectos, listar_calculos,
     obtener_calculo, eliminar_proyecto, extraer_calculo, resumen_comparacion,
@@ -246,6 +248,7 @@ def main(page: ft.Page):
     comparacion_resultado = ft.Text("", color=AZUL)
     comparacion_a = ft.Dropdown(label="Proyecto A", width=300, options=[])
     comparacion_b = ft.Dropdown(label="Proyecto B", width=300, options=[])
+    paso_scipy = ft.TextField(label="Intervalo de evaluación SciPy (m)", value="3", width=235)
     guardar_boton = ft.Button("GUARDAR PROYECTO EN HISTORIAL", disabled=True)
     panel = ft.Column(controls=[], expand=True, scroll=ft.ScrollMode.AUTO, spacing=14)
 
@@ -401,7 +404,19 @@ def main(page: ft.Page):
             if codigo != 0:
                 aviso.value = "El cálculo no terminó correctamente. Revisa la terminal."
                 return
-            aviso.value = "Cálculos terminados. Selecciona qué deseas consultar o exportar."
+            # Modelo independiente: SciPy interpola cotas EJE entre mediciones.
+            # Un error de interpolación no debe borrar los resultados originales.
+            try:
+                paso = float(paso_scipy.value.replace(",", "."))
+                r = await asyncio.to_thread(muestrear_eje, csv_entrada, paso)
+                await asyncio.to_thread(guardar_muestreo_csv, r, SALIDA / "cotas_eje_interpoladas.csv")
+                await asyncio.to_thread(guardar_muestreo_png, r, SALIDA / "cotas_eje_interpoladas.png")
+                aviso.value = "Cálculos terminados. SciPy generó cotas EJE estimadas entre estaciones."
+            except (ValueError, TypeError) as exc:
+                # No reutilizar silenciosamente las interpolaciones de otro CSV.
+                for anterior in (SALIDA / "cotas_eje_interpoladas.csv", SALIDA / "cotas_eje_interpoladas.png"):
+                    anterior.unlink(missing_ok=True)
+                aviso.value = f"Perfiles originales generados; SciPy no pudo interpolar: {exc}"
             cargar_resultados()
             guardar_boton.disabled = False
             mostrar_graficas()
@@ -477,6 +492,31 @@ def main(page: ft.Page):
             aviso_guardar.value = f"Falta una dependencia: {exc}. Instala openpyxl y python-docx."
         except Exception as exc:
             aviso_guardar.value = f"No se pudo exportar: {exc}"
+        page.update()
+
+    async def guardar_memoria(e):
+        """Genera la memoria reglada con docxtpl, no un simple Word tabular."""
+        if not csv_entrada or not Path(csv_entrada).is_file():
+            aviso_guardar.value = "Selecciona o recupera primero un proyecto con CSV válido."
+            page.update()
+            return
+        try:
+            paso = float(paso_scipy.value.replace(",", "."))
+            aviso_guardar.value = "Generando memoria de cálculo..."
+            page.update()
+            contenido = await asyncio.to_thread(
+                crear_memoria, csv_entrada, nombre_proyecto.value or "Perfil Vial", paso
+            )
+            destino = await ft.FilePicker().save_file(
+                dialog_title="Guardar memoria de cálculo Word",
+                file_name="memoria_calculo_perfil_vial.docx",
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["docx"],
+                src_bytes=contenido,
+            )
+            aviso_guardar.value = f"Memoria guardada: {destino}" if destino else "Guardado cancelado."
+        except Exception as exc:
+            aviso_guardar.value = f"No se pudo generar la memoria: {exc}"
         page.update()
 
     def guardar_en_historial(e=None):
@@ -661,6 +701,8 @@ def main(page: ft.Page):
             tarjeta(ft.Column(controls=[
                 ft.Text("EXPORTAR DATOS", size=18, weight=ft.FontWeight.BOLD, color=AZUL),
                 ft.Row(controls=[tipo_datos, ft.Button("GUARDAR ARCHIVO", on_click=guardar_datos)], wrap=True),
+                ft.Button("GENERAR MEMORIA DE CÁLCULO (DOCXTPL)", on_click=guardar_memoria),
+                ft.Text("La memoria utiliza los datos EJE, tabla con ciclo y gráfica insertada.", color=GRIS, size=12),
                 ft.Text("Excel, Word y CSV conservan los datos del archivo elegido. "
                         "El Word tabular no es aún la memoria de cálculo docxtpl.", color=GRIS, size=12),
                 aviso_guardar,
@@ -675,7 +717,7 @@ def main(page: ft.Page):
             tarjeta(ft.Column(controls=[
                 ft.Text("DISEÑO VIAL", size=23, weight=ft.FontWeight.BOLD, color=AZUL),
                 ft.Row(controls=[ft.Button("SELECCIONAR CSV", on_click=elegir_entrada),
-                                 archivo_entrada, generar], wrap=True),
+                                 archivo_entrada, paso_scipy, generar], wrap=True),
                 aviso, resumen,
                 ft.Row(controls=[nombre_proyecto, descripcion_proyecto, guardar_boton], wrap=True),
                 aviso_historial,

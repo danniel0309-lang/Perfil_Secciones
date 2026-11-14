@@ -1,2 +1,9 @@
-numpy>=1.21
-matplotlib>=3.5
+# Versiones fijas para Python 3.11 y Flet Desktop en Ubuntu 20.04
+flet[desktop]==1.0.4
+numpy==1.26.4
+scipy==1.13.1
+matplotlib==3.9.4
+openpyxl==3.1.5
+python-docx==1.2.0
+docxtpl==0.20.2
+pytest==8.4.2

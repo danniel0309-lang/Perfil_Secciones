@@ -248,3 +248,44 @@ perfil_vial_proyecto/
 ├── tests/
 └── referencia_autolisp/   # Perfil_long.lsp y Seccion_long.lsp originales
 ```
+
+---
+
+## Proyecto 02: escritorio, SQLite, SciPy y memoria Word
+
+> **Aviso:** El motor previo de perfiles continúa en `perfil_vial/`. La interfaz
+> `main.py` y las extensiones de `app/` no son una validación normativa de
+> rasantes, drenaje o diseños de pavimento.
+
+Requisitos: Ubuntu 20.04 o posterior con Python 3.11. En Linux Desktop, Flet
+requiere `zenity` para los diálogos de archivos.
+
+```bash
+sudo apt install -y zenity
+cd Perfil_Secciones-main
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+Desde **Diseño vial**: seleccionar un CSV con una columna `EJE`, introducir el
+intervalo de evaluación SciPy en metros (predeterminado 3), calcular y elegir
+**Gráficas** o **Datos e informes**. SciPy PCHIP estima las cotas intermedias del
+EJE *sin extrapolación* y distingue cotas observadas de cotas interpoladas en
+`cotas_eje_interpoladas.csv`. En **Datos e informes** usar **Generar memoria de
+cálculo (docxtpl)**, donde se genera un Word con datos, ecuaciones, tabla por
+bucle de plantilla y gráfica `InlineImage`.
+
+El **Historial** usa las tablas `proyectos` y `calculos` de SQLite para guardar y
+recuperar entradas y resultados. La base se crea en el primer inicio. Los
+archivos generados, la base de trabajo y el entorno virtual no se suben al
+repositorio porque están en `.gitignore`.
+
+Para verificar: `python -m pytest -q`. Las pruebas nuevas incluyen un caso
+lineal resuelto a mano y conservación de las mediciones en SciPy PCHIP.
+
+**Pendiente antes de entregar:** registrar autores, los dos colaboradores del
+repositorio, URL pública y capturas reales del programa; verificar la memoria
+Word generada en el Ubuntu de entrega, no solamente la plantilla. El módulo de
+alcantarillado y cantidades de obra aún no está implementado.
