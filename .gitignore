@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# carpetas de salida generadas al ejecutar el programa
+salida_perfil/
+salida/
+# Bases de datos SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Informes generados
+reportes_generados/
+# Resultados de ejemplo generados automáticamente
+examples/salida_ejemplo/
