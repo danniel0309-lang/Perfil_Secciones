@@ -22,6 +22,9 @@ import flet as ft
 from perfil_vial.cli import run as ejecutar_perfiles
 from app.modelo import muestrear_eje, guardar_muestreo_csv, guardar_muestreo_png
 from app.memoria import crear_memoria
+from app.rasante import (
+    calcular_rasante, guardar_rasante_csv, guardar_rasante_png, guardar_resumen_txt,
+)
 from app.db import (
     inicializar_db, guardar_proyecto, listar_proyectos, listar_calculos,
     obtener_calculo, eliminar_proyecto, extraer_calculo, resumen_comparacion,
@@ -47,6 +50,8 @@ NOMBRES = {
     "perfil_ideal": "Cartera de rasante ideal",
     "secciones_minimos": "Mínimos de secciones transversales",
     "informe_puntos_bajos": "Informe de puntos bajos",
+    "rasante_proyecto": "Rasante de proyecto · terreno, corte y relleno",
+    "rasante_resumen": "Resumen del prediseño de rasante",
 }
 
 
@@ -58,6 +63,8 @@ def nombre_legible(archivo: Path) -> str:
 
 def orden_grafica(archivo: Path):
     nombre = archivo.stem
+    if nombre == "rasante_proyecto":
+        return (-1, nombre)
     if nombre == "perfil_longitudinal_izquierdo":
         return (0, nombre)
     if nombre == "perfil_longitudinal_derecho":
@@ -250,7 +257,23 @@ def main(page: ft.Page):
     comparacion_b = ft.Dropdown(label="Proyecto B", width=300, options=[])
     paso_scipy = ft.TextField(label="Intervalo de evaluación SciPy (m)", value="3", width=235)
     guardar_boton = ft.Button("GUARDAR PROYECTO EN HISTORIAL", disabled=True)
-    panel = ft.Column(controls=[], expand=True, scroll=ft.ScrollMode.AUTO, spacing=14)
+    modo_rasante = ft.Dropdown(
+        label="Método de rasante", value="constante", width=245,
+        options=[
+            ft.DropdownOption(key="constante", text="Pendiente constante"),
+            ft.DropdownOption(key="suavizada", text="Suavizada con SciPy"),
+        ],
+    )
+    grado_suavizado = ft.TextField(label="Suavizado (%)", value="80", width=155)
+    pendiente_tope = ft.TextField(
+        label="Pendiente máxima absoluta (%) · opcional", value="", width=280,
+    )
+    boton_rasante = ft.Button("CALCULAR RASANTE", disabled=True)
+    estado_rasante = ft.Text(
+        "La rasante conservará exactamente las cotas EJE inicial y final.", color=GRIS,
+    )
+    # El panel comparte el desplazamiento de la pantalla principal; evitamos barras anidadas.
+    panel = ft.Column(controls=[], spacing=14)
 
     def limpiar_resultados():
         nonlocal graficas, documentos, marcas
@@ -285,6 +308,8 @@ def main(page: ft.Page):
             csv_entrada = Path(elegidos[0].path)
             carpeta_resultados = SALIDA
             guardar_boton.disabled = True
+            boton_rasante.disabled = True
+            estado_rasante.value = "La rasante conservará exactamente las cotas EJE inicial y final."
             archivo_entrada.value = csv_entrada.name
             aviso.value = "Archivo cargado. Puedes iniciar el cálculo."
             generar.disabled = False
@@ -393,6 +418,7 @@ def main(page: ft.Page):
             return
         generar.disabled = True
         guardar_boton.disabled = True
+        boton_rasante.disabled = True
         carpeta_resultados = SALIDA
         aviso.value = "Procesando información topográfica..."
         limpiar_resultados()
@@ -404,6 +430,9 @@ def main(page: ft.Page):
             if codigo != 0:
                 aviso.value = "El cálculo no terminó correctamente. Revisa la terminal."
                 return
+            # Un nuevo CSV no debe mostrar la rasante calculada para un CSV anterior.
+            for nombre in ("rasante_proyecto.csv", "rasante_proyecto.png", "rasante_resumen.txt"):
+                (SALIDA / nombre).unlink(missing_ok=True)
             # Modelo independiente: SciPy interpola cotas EJE entre mediciones.
             # Un error de interpolación no debe borrar los resultados originales.
             try:
@@ -419,6 +448,7 @@ def main(page: ft.Page):
                 aviso.value = f"Perfiles originales generados; SciPy no pudo interpolar: {exc}"
             cargar_resultados()
             guardar_boton.disabled = False
+            boton_rasante.disabled = False
             mostrar_graficas()
         except Exception as exc:
             aviso.value = f"Error durante el cálculo: {exc}"
@@ -427,6 +457,49 @@ def main(page: ft.Page):
             page.update()
 
     generar.on_click = procesar
+
+    async def disenar_rasante(e):
+        if csv_entrada is None or not csv_entrada.is_file() or not graficas:
+            estado_rasante.value = "Primero selecciona el CSV y calcula los perfiles."
+            page.update()
+            return
+        boton_rasante.disabled = True
+        estado_rasante.value = "Calculando la rasante y sus diferencias respecto al terreno EJE..."
+        page.update()
+        try:
+            paso = float(paso_scipy.value.replace(",", "."))
+            suavizado = float(grado_suavizado.value.replace(",", "."))
+            limite_texto = (pendiente_tope.value or "").strip()
+            limite = float(limite_texto.replace(",", ".")) if limite_texto else None
+            modo = modo_rasante.value or "constante"
+
+            def generar_archivos():
+                resultado = calcular_rasante(csv_entrada, paso, modo, suavizado, limite)
+                guardar_rasante_csv(resultado, carpeta_resultados / "rasante_proyecto.csv")
+                guardar_rasante_png(resultado, carpeta_resultados / "rasante_proyecto.png")
+                guardar_resumen_txt(resultado, carpeta_resultados / "rasante_resumen.txt")
+                return resultado
+
+            resultado = await asyncio.to_thread(generar_archivos)
+            cargar_resultados()
+            mostrar_graficas()
+            estado_rasante.value = (
+                f"Rasante generada | pendiente media {resultado.pendiente_media_pct:.3f} % | "
+                f"corte máximo EJE {resultado.corte_maximo_eje_m:.3f} m | "
+                f"relleno máximo EJE {resultado.relleno_maximo_eje_m:.3f} m. "
+                "Resultados disponibles en GRÁFICAS y DATOS E INFORMES. "
+                "Son diferencias verticales, NO volúmenes."
+            )
+        except (ValueError, TypeError, RuntimeError, OSError) as exc:
+            estado_rasante.value = (
+                f"No se generó una rasante nueva: {exc}. "
+                "Los archivos previos, si los había, no se actualizaron."
+            )
+        finally:
+            boton_rasante.disabled = False
+            page.update()
+
+    boton_rasante.on_click = disenar_rasante
 
     async def guardar_graficas(e):
         elegidas = [p for p in graficas if marcas[p.name].value and p.is_file()]
@@ -557,6 +630,7 @@ def main(page: ft.Page):
             generar.disabled = False
             cargar_resultados()
             guardar_boton.disabled = False
+            boton_rasante.disabled = False
             aviso.value = (
                 f"Recuperado: {registro['nombre_proyecto']} · "
                 f"cálculo #{registro['id']}. Resultados originales restaurados."
@@ -636,7 +710,7 @@ def main(page: ft.Page):
 
     def mostrar_historial(e=None):
         page.controls.clear()
-        page.add(ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, spacing=12, controls=[
+        page.add(ft.Column(expand=True, scroll=ft.ScrollMode.ALWAYS, spacing=12, controls=[
             cabecera(),
             tarjeta(ft.Column(controls=[
                 ft.Text("HISTORIAL DE PROYECTOS | SQLITE", size=22, weight=ft.FontWeight.BOLD, color=AZUL),
@@ -712,7 +786,7 @@ def main(page: ft.Page):
 
     def mostrar_vias(e=None):
         page.controls.clear()
-        page.add(ft.Column(expand=True, spacing=12, controls=[
+        page.add(ft.Column(expand=True, scroll=ft.ScrollMode.ALWAYS, spacing=12, controls=[
             cabecera(),
             tarjeta(ft.Column(controls=[
                 ft.Text("DISEÑO VIAL", size=23, weight=ft.FontWeight.BOLD, color=AZUL),
@@ -726,6 +800,21 @@ def main(page: ft.Page):
                                  ft.Button("HISTORIAL", on_click=mostrar_historial),
                                  ft.Button("INICIO", on_click=mostrar_inicio)], wrap=True),
             ], spacing=11)),
+            tarjeta(ft.Column(controls=[
+                ft.Text("RASANTE LONGITUDINAL | PREDISEÑO", size=18,
+                        weight=ft.FontWeight.BOLD, color=AZUL),
+                ft.Text(
+                    "Se mantienen las cotas medidas EJE de inicio y fin. "
+                    "La pendiente máxima es opcional; no se aplica un límite normativo por defecto.",
+                    color=GRIS,
+                ),
+                ft.Row(controls=[modo_rasante, grado_suavizado, pendiente_tope,
+                                 boton_rasante], wrap=True),
+                ft.Text("El suavizado solo afecta al método 'Suavizada con SciPy'. "
+                        "No se calculan volúmenes, drenaje ni curvas verticales.",
+                        size=12, color=GRIS),
+                estado_rasante,
+            ], spacing=10)),
             panel,
         ]))
         if graficas:
