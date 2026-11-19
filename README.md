@@ -1,3 +1,108 @@
+# PERFIL VIAL — Aplicación de escritorio para ingeniería civil
+
+**Estado del desarrollo:** interfaz Flet para perfiles, diseño longitudinal preliminar,
+secciones y cantidades geométricas de vía, alcantarillado entre pozos, sumideros,
+exportación de imágenes y datos, SQLite y memorias de cálculo con docxtpl.
+**Los diseños no sustituyen estudios geotécnicos, hidráulicos ni revisión normativa.**
+
+## Instalación y ejecución desde Ubuntu
+
+```bash
+cd ~/Descargas/Perfil_Secciones-main
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pytest -q
+python main.py
+```
+
+Para un entorno nuevo en Python 3.11:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
+```
+
+La base SQLite se crea en `datos/perfil_vial.db`, excluida de Git.
+La interfaz dispone de desplazamiento vertical y visor de gráficas con selección
+múltiple; exporta PNG/ZIP/PDF, y los resultados tabulares como CSV/Excel/Word.
+
+### Vías: geometría y cantidades
+
+1. **DISEÑO VIAL → SELECCIONAR CSV → CALCULAR PERFILES Y SECCIONES.**
+   El CSV tiene una fila por abscisa y puntos transversales de izquierda a derecha.
+2. **CALCULAR RASANTE:** constante o suavizada con SciPy, extremos EJE fijos.
+3. **SECCIONES TRANSVERSALES:** define los semianchos (m), la pendiente transversal
+   (%) hacia ambos costados o hacia un solo costado, y espesores de asfalto,
+   base granular, subbase y rajón (m). El eje no necesariamente es el punto más alto.
+4. **Sumideros (opcional):** una línea por estructura con este formato:
+   `Nombre;Abscisa_m;IZQ/DER;Offset_m;CotaRejilla_m;CotaRasanteOpcional_m`.
+   El programa calcula cota de rodadura en el offset y diferencia con la rejilla.
+5. Pulsa **CALCULAR SECCIONES, CANTIDADES Y SUMIDEROS**. Genera una vista
+   para cada sección, balance de áreas, carteras y volúmenes geométricos.
+6. **DATOS E INFORMES → GENERAR MEMORIA DE CÁLCULO** crea Word mediante docxtpl.
+
+El volumen de corte y relleno se integra por **áreas extremas entre secciones**,
+comparando terreno interpolado linealmente en cada sección con subrasante
+(rodadura menos suma de capas). **No se consideran taludes ni sobreanchos**.
+Las cantidades de capas son prismas teóricos `ancho × longitud × espesor`.
+El incremento de suministro definido (%) es un factor de aprovisionamiento
+simple, **no** compactación relativa Proctor ni desperdicio normativo.
+Se rechaza el cálculo si faltan cotas transversales hasta los bordes; no se
+extrapolan mediciones fuera de la sección levantada.
+
+### Redes de alcantarillado: tramos independientes
+
+1. **REDES DE ALCANTARILLADO → AGREGAR TRAMO**, hasta 200 tramos.
+2. Por tramo escribe **pozo 1 (salida)** y **pozo 2 (entrada)**: nombre,
+   abscisa en metros, cota de rasante, cota de lomo EXTERIOR y batea EXTERIOR.
+   Selecciona material (PVC blanco / concreto gris) y red (pluvial / residual).
+3. Define parámetros de zanja: sobreancho total respecto al diámetro,
+   cama de triturado debajo de batea, longitud efectiva por tubo (5.85 m por
+   defecto), espesores asfalto/base/subbase y factor de suministro.
+4. Opcionalmente define interferencias (una por línea):
+   `NumTramo;Abscisa_m;Servicio;CotaSuperior_m;CotaInferior_m`
+   (p. ej., `1;12.5;Gas;101.5;101.2` solo si son datos reales).
+5. **CALCULAR REDES, CARTERA Y CANTIDADES**. Exporta perfiles, cota de
+   lomo/batea entre pozos, pendientes, diámetro exterior en metros y pulgadas,
+   lista de tubos cada 5.85 m, volúmenes teóricos de zanja y holguras verticales.
+6. **DATOS E INFORMES** exporta el CSV, Excel o Word, además de memoria docxtpl.
+   **GUARDAR PROYECTO EN HISTORIAL** almacena los resultados y permite reabrirlos.
+
+El diámetro en pulgadas `((lomo-batea)/0.0254)` es un **diámetro EXTERIOR
+medido**, nunca un diámetro nominal comercial. No se presume el espesor de pared.
+La pendiente longitudinal se calcula con cotas de batea de extremos;
+las cotas intermedias de la cartera son **interpolaciones lineales**, no
+mediciones de campo. Para cada cruce se informa holgura vertical, no
+verificación de ubicación en planta ni separación mínima reglamentaria.
+No se han implementado cálculo hidráulico de caudales, uniones estructurales,
+verificación hidráulica, diseño de pozos, presupuesto monetario, análisis de
+precios unitarios, ni validación normativa. Estas funciones necesitarían datos
+adicionales y criterios de la entidad correspondiente.
+
+### Módulos y salidas
+
+- `perfil_vial/`: motor CLI original conservado.
+- `app/modelo.py`: PCHIP de cotas EJE, sin extrapolación.
+- `app/rasante.py`: prediseño longitudinal, extremos fijos, SciPy SLSQP.
+- `app/transversal.py`: rodadura y subrasante, áreas de corte/relleno por
+  sección, volúmenes entre secciones y cantidades de capas.
+- `app/sumideros.py`: registro, comparación de rejilla y ubicación en planta esquemática.
+- `app/alcantarillado.py`: tramos entre pozos, carteras, interferencias y zanjas.
+- `app/db.py`: SQLite con dos tablas vinculadas y recuperación de resultados.
+- `app/memoria.py` y `app/memoria_obra.py`: docxtpl con tablas dinámicas e imagen.
+- `salida/`: resultados actuales del módulo vial; `salida/redes/`: resultados actuales
+  del módulo de alcantarillado. Estas carpetas no se versionan en GitHub.
+- `tests/`: pruebas reproducibles de geometría, redes, SQLite, CLI y SciPy.
+
+**Nota:** el CSV topográfico de ejemplo es sintético. Nunca utilices sus cotas
+como mediciones de obra o para estimar cantidades reales.
+
+---
+
+## Descripción técnica y opciones del motor original
+
 # perfil_vial
 
 Perfil longitudinal, secciones transversales, puntos bajos y línea ideal de una vía a partir de un CSV de levantamientos topográficos transversales.

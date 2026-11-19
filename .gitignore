@@ -23,3 +23,9 @@ reportes_generados/
 .~lock*
 /perfil_ideal.xlsx
 /INSTRUCCIONES.txt
+
+# Resguardos locales y notas de instalación
+main_respaldo*.py
+main_antes_*.py
+INSTRUCCIONES_V*.txt
+# Resultados de redes guardados bajo salida/
